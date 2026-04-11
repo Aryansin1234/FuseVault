@@ -1,0 +1,10 @@
+keys/
+logs/
+*.enc
+myfs
+*.o
+*.d
+.vault.key
+.vault_store/
+.vault_audit.log
+.fusevault_initialized
