@@ -1,50 +1,218 @@
-# FuseVault
+<div align="center">
 
-> Custom Encrypted FUSE Filesystem — C + OpenSSL AES-256 + Shell Vault Manager
+```
+███████╗██╗   ██╗███████╗███████╗██╗   ██╗ █████╗ ██╗   ██╗██╗ ████████╗
+██╔════╝██║   ██║██╔════╝██╔════╝██║   ██║██╔══██╗██║   ██║██║ ╚══██╔══╝
+█████╗  ██║   ██║███████╗█████╗  ██║   ██║███████║██║   ██║██║    ██║   
+██╔══╝  ██║   ██║╚════██║██╔══╝  ╚██╗ ██╔╝██╔══██║██║   ██║██║    ██║   
+██║     ╚██████╔╝███████║███████╗ ╚████╔╝ ██║  ██║╚██████╔╝███████╗██║  
+╚═╝      ╚═════╝ ╚══════╝╚══════╝  ╚═══╝  ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  
+```
 
-FuseVault is a mountable virtual filesystem that transparently encrypts every file you write and decrypts every file you read. Any application that opens a file from `~/vault/` sees plain text — the encryption is invisible at the OS level, handled entirely in userspace via FUSE.
+**A military-grade encrypted virtual filesystem built in C**
+
+`FUSE` · `AES-256-CBC` · `Argon2id` · `OpenSSL` · `Hash-Chain Audit Log`
 
 ---
 
-## Architecture
+[![Language](https://img.shields.io/badge/Language-C-blue?style=flat-square&logo=c)](https://en.wikipedia.org/wiki/C_(programming_language))
+[![Encryption](https://img.shields.io/badge/Encryption-AES--256--CBC-green?style=flat-square&logo=openssl)](https://www.openssl.org/)
+[![KDF](https://img.shields.io/badge/KDF-Argon2id-purple?style=flat-square)](https://github.com/P-H-C/phc-winner-argon2)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Docker-orange?style=flat-square&logo=linux)](https://kernel.org/)
+[![FUSE](https://img.shields.io/badge/FUSE-libfuse2-yellow?style=flat-square)](https://github.com/libfuse/libfuse)
 
-```
-User Application (cat, cp, vim, …)
-        │
-        ▼
-  VFS (Linux Kernel)
-        │
-        ▼
-  FUSE Kernel Module
-        │
-        ▼
-  myfs (your process)       ← intercepts every read / write / open / readdir
-        │              │
-        ▼              ▼
-   Decrypt           Encrypt
-  (read path)       (write path)
-        │              │
-        └──────┬────────┘
-               ▼
-       store/             ← AES-256-CBC encrypted .enc files
-               +
-       logs/vault_audit.log  ← hash-chained tamper-evident access trail
-```
-
-### Data Flow
-
-| Operation | What happens |
-|-----------|-------------|
-| `cp file.txt mount/` | plaintext → AES-256-CBC encrypt (fresh FEK + IV) → `.enc` stored |
-| `cat mount/file.txt` | `.enc` read → decrypt FEK → decrypt ciphertext → plaintext returned |
-| Any access | timestamp + user + op + path → SHA-256 hash-chained audit log entry |
+</div>
 
 ---
 
-## Prerequisites
+## 🔐 What is FuseVault?
+
+**FuseVault** is a mountable virtual filesystem that **transparently encrypts every file you write and decrypts every file you read** — completely invisible to any application that uses it.
+
+Copy a file into `mount/` — it's encrypted on disk. Read it back — it's decrypted automatically. No special software, no manual steps. It just works.
+
+```
+ You: cat mount/secrets.txt
+                  ↓
+         FUSE intercepts the read
+                  ↓
+         Decrypts on-the-fly via AES-256-CBC
+                  ↓
+ App receives: "my top secret content"
+
+ What's on disk in store/: ÿó¤±Ðú╗╢╕ëÞõ (unreadable binary)
+```
+
+> Think: **macOS FileVault** or **VeraCrypt** — but implemented from scratch in C, fully in userspace.
+
+---
+
+## ✨ Key Features
+
+| Feature | Description |
+|---|---|
+| 🔒 **Transparent Encryption** | Any app reads/writes normally — encryption is invisible at the OS level |
+| 🛡️ **AES-256-CBC per file** | Each file gets a fresh random IV, preventing frequency analysis |
+| 🗝️ **Envelope Encryption (FEK)** | Per-file keys wrapped by master key — same model as AWS KMS & Google Cloud KMS |
+| 🧬 **Argon2id Key Derivation** | Memory-hard passphrase KDF — GPU brute-force becomes economically infeasible |
+| 📋 **Hash-Chain Audit Log** | Every operation SHA-256 chained — log tampering is instantly detectable |
+| 🔏 **Secure Memory Erasure** | `OPENSSL_cleanse()` + `mlock()` — keys never hit swap, zeroed on unmount |
+| 🎬 **Interactive TUI** | Cinematic terminal UI with guided demo, file browser, diagnostics, and more |
+| 🔄 **Key Rotation** | Re-encrypt all files under a new master key with one command |
+
+---
+
+## 🏗️ Architecture
+
+```
+ ┌─────────────────────────────────────┐
+ │    User Application                 │
+ │    (cat, cp, vim, any program...)   │
+ └──────────────┬──────────────────────┘
+                │  read() / write() syscalls
+                ▼
+ ┌──────────────────────────────────────┐
+ │    VFS — Linux Virtual File System   │
+ │    (routes I/O to correct driver)    │
+ └──────────────┬───────────────────────┘
+                │
+                ▼
+ ┌──────────────────────────────────────┐
+ │    FUSE Kernel Module                │
+ │    (bridges kernel ↔ userspace)      │
+ └──────────────┬───────────────────────┘
+                │
+                ▼
+ ┌──────────────────────────────────────┐
+ │    myfs  (src/myfs.c)                │  ← Your C process, running in userspace
+ │    intercepts every read/write/open  │
+ └─────────┬──────────────┬────────────┘
+           │              │
+           ▼              ▼
+       Decrypt          Encrypt
+      (read path)      (write path)
+           │              │
+           └──────┬────────┘
+                  ▼
+        store/*.enc              ← AES-256-CBC encrypted binary blobs
+             +
+        logs/vault_audit.log     ← SHA-256 hash-chained tamper-evident log
+```
+
+### 📦 Data Flow
+
+| Operation | What happens end-to-end |
+|---|---|
+| `cp secret.pdf mount/` | plaintext → fresh random IV + FEK → AES-256-CBC encrypt with FEK → wrap FEK with master key → write `.enc` header + ciphertext to `store/` |
+| `cat mount/notes.txt` | read `.enc` → parse header → unwrap FEK using master key → decrypt ciphertext → return plaintext |
+| `ls mount/` | list `store/`, strip `.enc` suffix → return plain filenames |
+| Any operation | timestamp + user + op + path → SHA-256 hash-chained entry → appended to audit log |
+
+---
+
+## 🔒 Security Model
+
+### 1️⃣ AES-256-CBC with a Random IV Per Write
+
+Every `write()` call generates a new 16-byte IV via `RAND_bytes()`. This means:
+- Encrypting the same file twice produces **completely different ciphertext**
+- Prevents frequency analysis and known-plaintext attacks
+
+### 2️⃣ Per-File Envelope Encryption (FEK)
+
+```
+ ┌──────────────────┬──────────────┬───────────────────────┬──────────────┐
+ │  PLAINTEXT_SIZE  │   IV (16 B)  │  Encrypted FEK (48 B) │  Ciphertext  │
+ │      (4 B)       │ random/write │  master-key wrapped    │  (variable)  │
+ └──────────────────┴──────────────┴───────────────────────┴──────────────┘
+ ←────────────────────── HEADER_SIZE = 68 bytes ──────────────────────────→
+```
+
+- Each file gets its own random **File Encryption Key (FEK)**
+- The FEK is encrypted (wrapped) with the master key and stored in the file header
+- **Compromise of one file's FEK has zero impact on any other file**
+- This is identical to the model used by **AWS KMS** and **Google Cloud KMS**
+
+### 3️⃣ Argon2id Key Derivation
+
+When using `vault.sh keygen --passphrase`, the master key is derived using **Argon2id** (winner of the 2015 Password Hashing Competition):
+
+| Parameter | Value | Effect |
+|---|---|---|
+| `-t 3` | 3 iterations | CPU work |
+| `-m 16` | 2¹⁶ = **64 MB RAM** | Memory-hard — destroys GPU parallelism |
+| `-p 4` | 4 threads | Parallel lanes |
+| `-l 32` | 32-byte output | 256-bit key |
+
+**Why Argon2id over PBKDF2?**
+PBKDF2 is compute-only — a GPU farm can test billions of passwords/sec. Argon2id requires 64 MB of RAM per attempt, so an attacker with 1 TB of GPU RAM can only test ~16,000 passwords simultaneously. Brute-force becomes economically infeasible.
+
+### 4️⃣ Hash-Chained Tamper-Evident Audit Log
+
+```
+[2026-03-24 10:15:33] [alice] MOUNT /workspace/store PREV=GENESIS HASH=a3f9...
+[2026-03-24 10:15:41] [alice] WRITE /notes.txt PREV=a3f9... HASH=b812...
+[2026-03-24 10:16:02] [alice] READ  /notes.txt PREV=b812... HASH=c490...
+```
+
+`HASH = SHA-256("[timestamp] [user] OP path PREV=<prev_hash>")` — any modification to any entry breaks the entire chain.
+
+### 5️⃣ Secure Memory Erasure
+
+```c
+// ❌ WRONG — compiler can eliminate this as a "dead store"
+memset(key_buffer, 0, KEY_SIZE);
+
+// ✅ CORRECT — OpenSSL guarantees this is never optimized away
+OPENSSL_cleanse(key_buffer, KEY_SIZE);
+```
+
+- `OPENSSL_cleanse()` zeros all key material and plaintext buffers after use
+- `mlock()` pins the master key buffer in physical RAM — never paged to swap
+- `destroy()` callback (called on unmount) cleanses and unlocks the master key
+
+---
+
+## 🌍 Real-World Equivalents
+
+| FuseVault Concept | Real-World Equivalent |
+|---|---|
+| FUSE transparent encryption | macOS FileVault, VeraCrypt |
+| Per-file envelope encryption | AWS KMS, Google Cloud KMS |
+| Argon2id key derivation | 1Password, Bitwarden |
+| Hash-chained audit log | Blockchain, HashiCorp Vault |
+| `mlock()` + `OPENSSL_cleanse()` | Hardware Security Modules (HSMs) |
+
+---
+
+## 📁 Project Structure
+
+```
+FuseVault/
+├── src/
+│   └── myfs.c                 ← FUSE filesystem (C) — the encryption engine
+├── scripts/
+│   ├── vault.sh               ← Vault lifecycle manager (Bash)
+│   └── fusevault_ui.sh        ← Interactive cinematic TUI (gum-powered)
+├── store/                     ← Encrypted .enc backing files (gitignored)
+├── mount/                     ← FUSE mount point — the "magic folder"
+├── keys/                      ← Master key (gitignored, chmod 600)
+├── logs/                      ← Audit log (vault_audit.log)
+├── Makefile                   ← Build system
+├── Dockerfile                 ← Docker image (required for macOS)
+├── run.sh                     ← Convenience launch script
+├── DOCS.md                    ← Full technical documentation
+└── TESTING.md                 ← Test procedures
+```
+
+---
+
+## 📋 Prerequisites
+
+> **FuseVault requires Linux.** FUSE is a Linux kernel feature. On macOS, use Docker (recommended).
 
 | Package | Purpose | Install |
-|---------|---------|---------|
+|---|---|---|
 | `libfuse-dev` | FUSE headers | `apt install libfuse-dev` |
 | `fuse` | `fusermount` binary | `apt install fuse` |
 | `openssl` + `libssl-dev` | AES-256, SHA-256 | `apt install openssl libssl-dev` |
@@ -52,17 +220,24 @@ User Application (cat, cp, vim, …)
 | `pkg-config` | FUSE CFLAGS/LDFLAGS | `apt install pkg-config` |
 | `argon2` | Passphrase key derivation | `apt install argon2` |
 | `inotify-tools` | Idle-timeout watchdog | `apt install inotify-tools` |
-| `xxd` | Hex-to-binary for Argon2 output | included in `build-essential` |
+
+Install all at once:
+```bash
+sudo apt update && sudo apt install -y \
+  libfuse-dev fuse openssl libssl-dev \
+  build-essential pkg-config argon2 \
+  inotify-tools cppcheck clang-format
+```
 
 ---
 
-## Docker Quick-Start (Recommended)
+## 🐳 Docker Quick-Start (Recommended for macOS)
 
 ```bash
 # 1. Build the image
 docker build -t fusevault .
 
-# 2. Run with FUSE privileges
+# 2. Run with FUSE privileges (required for /dev/fuse access)
 docker run -it \
   --privileged \
   --cap-add SYS_ADMIN \
@@ -71,7 +246,7 @@ docker run -it \
   -v "$(pwd):/workspace" \
   fusevault bash
 
-# 3. Inside the container — build and start
+# 3. Inside the container — compile, generate a key, and mount
 make
 ./scripts/vault.sh keygen
 ./scripts/vault.sh mount
@@ -79,7 +254,7 @@ make
 
 ---
 
-## First-Time Setup
+## 🚀 First-Time Setup
 
 ```bash
 # Compile the FUSE binary
@@ -88,167 +263,159 @@ make
 # Generate a random 256-bit key
 ./scripts/vault.sh keygen
 
-# OR derive a key from a passphrase (Argon2id, memory-hard)
+# OR derive a key from a passphrase (Argon2id — memory-hard)
 ./scripts/vault.sh keygen --passphrase
 
 # Mount the vault
 ./scripts/vault.sh mount
 
-# Verify it is up
+# Verify it's running
 ./scripts/vault.sh status
 ```
 
 ---
 
-## Using the Vault
+## 📂 Using the Vault
 
 ```bash
-# Write a file (encrypted transparently on write)
+# ✏️  Write a file (encrypted transparently on write)
 cp ~/secret.pdf mount/
 echo "TOP SECRET" > mount/notes.txt
 
-# Read a file (decrypted transparently on read)
-cat mount/notes.txt
+# 📖  Read a file (decrypted transparently on read)
+cat mount/notes.txt           # → TOP SECRET
 libreoffice mount/report.docx
 
-# List files (shows plain names, not .enc names)
+# 📋  List files (shows plain names, not .enc names)
 ls mount/
 
-# Unmount safely
+# 🔒  Unmount safely (zeroes key from RAM)
 ./scripts/vault.sh unmount
 ```
 
 ---
 
-## All Vault Commands
+## 🖥️ Interactive TUI
+
+FuseVault ships with a full cinematic terminal UI powered by [gum](https://github.com/charmbracelet/gum):
 
 ```bash
-./scripts/vault.sh mount                 # Mount the vault
-./scripts/vault.sh mount --idle-timeout 10   # Auto-unmount after 10 min idle
-./scripts/vault.sh unmount               # Unmount safely
-./scripts/vault.sh status                # Show mount state, key, log, watchdog
-./scripts/vault.sh keygen                # Generate new random 256-bit key
-./scripts/vault.sh keygen --passphrase   # Derive key via Argon2id passphrase
-./scripts/vault.sh passphrase            # Change passphrase
-./scripts/vault.sh rotate                # Re-encrypt all files with a new key
-./scripts/vault.sh wipe                  # Securely shred key (requires typing CONFIRM)
-./scripts/vault.sh encrypt <file>        # Manually encrypt a file
-./scripts/vault.sh decrypt <file.enc>    # Manually decrypt a file
-./scripts/vault.sh log                   # View full audit log
-./scripts/vault.sh log --tail 20         # View last 20 log entries
-./scripts/vault.sh verify-log            # Verify hash-chain integrity
+./scripts/fusevault_ui.sh
+```
+
+**Screens available:**
+
+| Screen | Description |
+|---|---|
+| 🖥️ **Dashboard** | Live vault status — mount state, key health, recent events |
+| 📁 **File Browser** | Browse, read, write, and delete encrypted files interactively |
+| 🔒 **Vault Controls** | Mount, unmount, self-test, wipe |
+| 📋 **Audit Log** | View, verify, and follow the hash-chain audit trail live |
+| 🔑 **Key Management** | Generate, derive, rotate, and inspect the master key |
+| 🔬 **Diagnostics** | Health checks for binary, crypto libraries, key permissions |
+| 🎬 **Guided Demo** | 7-step interactive walkthrough — best starting point |
+
+---
+
+## 📖 All Vault Commands
+
+```bash
+# 🔌 Lifecycle
+./scripts/vault.sh mount                      # Mount the vault
+./scripts/vault.sh mount --idle-timeout 10    # Auto-unmount after 10 min idle
+./scripts/vault.sh unmount                    # Unmount safely (zeroes key from RAM)
+./scripts/vault.sh status                     # Show mount state, key, log, watchdog
+
+# 🗝️  Key Management
+./scripts/vault.sh keygen                     # Generate new random 256-bit key
+./scripts/vault.sh keygen --passphrase        # Derive key via Argon2id passphrase
+./scripts/vault.sh passphrase                 # Change passphrase
+./scripts/vault.sh rotate                     # Re-encrypt all files with a new key
+./scripts/vault.sh wipe                       # Securely shred key (type CONFIRM)
+
+# 📄 File Operations
+./scripts/vault.sh encrypt <file>             # Manually encrypt a file
+./scripts/vault.sh decrypt <file.enc>         # Manually decrypt a file
+
+# 📋 Audit Log
+./scripts/vault.sh log                        # View full audit log
+./scripts/vault.sh log --tail 20              # View last 20 entries
+./scripts/vault.sh verify-log                 # Verify hash-chain integrity
 ```
 
 ---
 
-## Makefile Targets
+## 🛠️ Build Targets
 
 ```bash
-make          # Build myfs binary
-make debug    # Build with -g -DDEBUG and AddressSanitizer
-make clean    # Remove build artifacts
-make install  # Install myfs and vault to /usr/local/bin
-make uninstall
-make test     # Automated mount/write/read/unmount self-test
-make lint     # Run cppcheck on src/myfs.c
-make format   # Run clang-format on src/myfs.c
-make help     # Print all targets
+make              # Build myfs binary
+make debug        # Build with -g -DDEBUG + AddressSanitizer
+make clean        # Remove build artifacts
+make install      # Install myfs and vault to /usr/local/bin
+make uninstall    # Remove installed files
+make test         # Automated mount → write → read → verify → unmount self-test
+make lint         # Run cppcheck on src/myfs.c
+make format       # Run clang-format on src/myfs.c
+make help         # Print all targets
 ```
 
 ---
 
-## Security Model
-
-### 1. AES-256-CBC with Random IV per File
-
-Every write generates a cryptographically random 16-byte IV via `RAND_bytes()`. Identical plaintexts produce different ciphertexts, preventing frequency analysis.
-
-### 2. Per-File Envelope Encryption
-
-```
-┌──────────────────┬──────────────┬───────────────────────┬──────────────┐
-│ PLAINTEXT_SIZE   │  IV (16 B)   │  Encrypted FEK (48 B) │  Ciphertext  │
-│    (4 B)         │              │  master-key wrapped    │              │
-└──────────────────┴──────────────┴───────────────────────┴──────────────┘
-←────────────────────── HEADER_SIZE = 68 bytes ────────────────────────────→
-```
-
-- Each file gets its own random **File Encryption Key (FEK)**
-- File content is encrypted with the FEK using AES-256-CBC
-- The FEK is encrypted with the master key (AES-256-CBC key wrapping)
-- Compromising one file's FEK does not compromise any other file
-- This is the same model used by **AWS KMS** and **Google Cloud KMS**
-
-### 3. Argon2id Key Derivation
-
-When using `vault keygen --passphrase`, the master key is derived using Argon2id (winner of the Password Hashing Competition 2015):
-
-```
-Argon2id parameters:
-  -t 3   : 3 time iterations
-  -m 16  : 2^16 = 64 MB of RAM required per attempt
-  -p 4   : 4 parallel threads
-  -l 32  : 32-byte (256-bit) output
-```
-
-Argon2id beats PBKDF2 because it is **memory-hard**: an attacker with a GPU farm still needs gigabytes of RAM per password guess. PBKDF2 is compute-only and can be parallelized cheaply on GPUs. Argon2id makes brute-force economically infeasible.
-
-### 4. Hash-Chained Tamper-Evident Audit Log
-
-Each log entry includes:
-```
-[2025-03-24 10:15:41] [alice] WRITE /notes.txt PREV=a3f9...b2 HASH=b812...c4
-```
-
-The `HASH` field is `SHA-256("[timestamp] [user] OP path PREV=<prev_hash>")`. The `PREV` field chains entries together. Any modification to any entry breaks the chain — detectable with `vault verify-log`.
-
-### 5. Secure Memory Erasure
-
-- `OPENSSL_cleanse()` is used (not `memset`) to zero key material and plaintext buffers after use. Compilers cannot optimize away `OPENSSL_cleanse` as a dead store.
-- `mlock()` pins the master key buffer in RAM so it is never paged to the swap device.
-- The FUSE `destroy()` callback (called on unmount) cleanses and unlocks the master key.
-
----
-
-## Verifying Encryption Works
+## 🔬 Verifying Encryption Works
 
 ```bash
-# Mount, write a file, unmount
+# Mount and write a secret
 ./scripts/vault.sh mount
 echo "TOP SECRET" > mount/test.txt
+
+# Unmount and inspect the raw backing file — should be unreadable binary
 ./scripts/vault.sh unmount
-
-# Inspect the raw backing store — should be binary garbage
 xxd store/test.txt.enc | head
+# Output: 00000000: 0b00 0000 a3f9 b2c1 d4e7 ...  ← binary garbage
 
-# Re-mount and verify you can read plaintext
+# Re-mount and confirm plaintext is recovered
 ./scripts/vault.sh mount
-cat mount/test.txt   # → TOP SECRET
+cat mount/test.txt    # → TOP SECRET
 ./scripts/vault.sh unmount
 ```
 
 ---
 
-## Audit Log Example
+## 📋 Audit Log Example
 
 ```
-[2025-03-24 10:15:33] [alice] MOUNT /workspace/store PREV=GENESIS HASH=a3f9...
-[2025-03-24 10:15:41] [alice] WRITE /notes.txt PREV=a3f9... HASH=b812...
-[2025-03-24 10:16:02] [alice] READ /notes.txt PREV=b812... HASH=c490...
-[2025-03-24 10:20:15] [alice] UNMOUNT /workspace/store PREV=c490... HASH=d107...
+[2026-03-24 10:15:33] [alice] MOUNT  /workspace/store PREV=GENESIS  HASH=a3f9...
+[2026-03-24 10:15:41] [alice] WRITE  /notes.txt       PREV=a3f9...  HASH=b812...
+[2026-03-24 10:16:02] [alice] READ   /notes.txt       PREV=b812...  HASH=c490...
+[2026-03-24 10:20:15] [alice] UNMOUNT /workspace/store PREV=c490... HASH=d107...
 ```
 
-Verify integrity:
+Verify integrity at any time:
 ```bash
 ./scripts/vault.sh verify-log
-# Line 1: OK    [2025-03-24 10:15:33] MOUNT
-# Line 2: OK    [2025-03-24 10:15:41] WRITE
+# Line 1: OK    [2026-03-24 10:15:33] MOUNT
+# Line 2: OK    [2026-03-24 10:15:41] WRITE
+# Line 3: OK    [2026-03-24 10:16:02] READ
+# Line 4: OK    [2026-03-24 10:20:15] UNMOUNT
 # Summary: 4 OK | 0 TAMPERED
 ```
 
 ---
 
-## Potential Enhancements
+## ⚙️ Environment Variables
+
+Override default paths with environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `VAULT_BACKING_DIR` | `<project>/store` | Where `.enc` files are stored |
+| `VAULT_KEY_FILE` | `<project>/keys/vault.key` | Path to the 32-byte master key |
+| `VAULT_LOG_FILE` | `<project>/logs/vault_audit.log` | Path to the audit log |
+| `VAULT_MOUNT_POINT` | `<project>/mount` | FUSE mount point directory |
+
+---
+
+## 🔭 Potential Enhancements
 
 - **ChaCha20-Poly1305** — authenticated encryption; detects ciphertext tampering
 - **FUSE 3 API** — updated `getattr` signature and improved performance
@@ -259,7 +426,20 @@ Verify integrity:
 
 ---
 
-## References
+## 🔧 Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `cannot open key file` | Run `./scripts/vault.sh keygen` |
+| `myfs binary not found` | Run `make` |
+| `fuse device not found` | Run `sudo modprobe fuse` |
+| `mlock() failed (non-fatal)` | Add `--cap-add IPC_LOCK` to Docker |
+| Vault did not mount | Ensure `--privileged --cap-add SYS_ADMIN --device /dev/fuse` in Docker |
+| Decryption failed / binary output | Wrong key loaded — key mismatch with `.enc` files |
+
+---
+
+## 📚 References
 
 - [FUSE Documentation](https://libfuse.github.io/doxygen/)
 - [OpenSSL EVP API](https://www.openssl.org/docs/man3.0/man3/EVP_EncryptInit.html)
@@ -269,4 +449,16 @@ Verify integrity:
 
 ---
 
-*FuseVault — Built with Claude Code*
+## 📖 Full Documentation
+
+For complete technical documentation including FUSE callback internals, key management workflows, file format spec, concepts glossary, and more — see [DOCS.md](DOCS.md).
+
+---
+
+<div align="center">
+
+**FuseVault** — *Your Files. Your Keys. Your Vault.*
+
+*Built with C · OpenSSL · FUSE · Argon2id · Claude Code*
+
+</div>

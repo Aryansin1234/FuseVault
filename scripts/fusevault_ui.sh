@@ -215,7 +215,7 @@ show_splash() {
                 line+=" "
             fi
         done
-        printf '\033[38;2;30;30;60m%s\033[0m\n' "$line"
+        printf '\033[38;2;0;40;20m%s\033[0m\n' "$line"
         sleep 0.05
     done
 
@@ -228,7 +228,7 @@ show_splash() {
         "    ██║     ╚██████╔╝███████║███████╗ ╚████╔╝ ██║  ██║╚██████╔╝███████╗██║   "
         "    ╚═╝      ╚═════╝ ╚══════╝╚══════╝  ╚═══╝  ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  "
     )
-    local -a gradient_colors=("#002255" "#003388" "#0050bb" "#0070dd" "#0090f0" "#00bbff")
+    local -a gradient_colors=("#003322" "#005533" "#007744" "#009955" "#00bb77" "#00ffaa")
 
     for ((i = 0; i < ${#banner_lines[@]}; i++)); do
         # Quick flash then color
@@ -319,7 +319,7 @@ show_splash() {
 draw_header() {
     # Top accent line with gradient dots
     printf '  '
-    local -a accent_colors=("#002244" "#003366" "#004488" "#0066aa" "#0088cc" "#00aaee" "#00ccff" "#00aaee" "#0088cc" "#0066aa" "#004488" "#003366" "#002244")
+    local -a accent_colors=("#003322" "#005533" "#007744" "#009955" "#00bb77" "#00dd99" "#00ffaa" "#00dd99" "#00bb77" "#009955" "#007744" "#005533" "#003322")
     for ac in "${accent_colors[@]}"; do
         printf '\033[38;2;%d;%d;%dm━━━━━━\033[0m' \
             "$(( 16#${ac:1:2} ))" "$(( 16#${ac:3:2} ))" "$(( 16#${ac:5:2} ))"
@@ -391,7 +391,7 @@ draw_statusbar() {
     echo ""
     # Gradient separator
     printf '  '
-    local -a accent_colors=("#002244" "#003366" "#004488" "#0066aa" "#0088cc" "#00aaee" "#00ccff" "#00aaee" "#0088cc" "#0066aa" "#004488" "#003366" "#002244")
+    local -a accent_colors=("#003322" "#005533" "#007744" "#009955" "#00bb77" "#00dd99" "#00ffaa" "#00dd99" "#00bb77" "#009955" "#007744" "#005533" "#003322")
     for ac in "${accent_colors[@]}"; do
         printf '\033[38;2;%d;%d;%dm══════\033[0m' \
             "$(( 16#${ac:1:2} ))" "$(( 16#${ac:3:2} ))" "$(( 16#${ac:5:2} ))"
@@ -1720,5 +1720,36 @@ first_run_check() {
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 show_splash
+
+# ── Confirmation gate ─────────────────────────────────────────────────────────
+echo ""
+gum style \
+    --border rounded \
+    --border-foreground "$C" \
+    --padding "1 4" \
+    --width 62 \
+    --align center \
+    "$(gum style --foreground "$C" --bold "🛡️  Welcome to FuseVault")" \
+    "" \
+    "$(gum style --foreground "$SV" "Your encrypted FUSE filesystem is ready.")" \
+    "$(gum style --foreground "$DM" "AES-256-CBC · Argon2id · Hash-Chain Audit")"
+echo ""
+
+if ! gum confirm \
+    "$(gum style --foreground "$W" "  Enter the vault?")" \
+    --affirmative "$(gum style --foreground "$G" "  ✔  Enter Vault  ")" \
+    --negative    "$(gum style --foreground "$R" "  ✕  Exit         ")" \
+    --default=Yes; then
+    echo ""
+    gum style \
+        --foreground "$DM" \
+        --italic \
+        --align center \
+        --width 62 \
+        "Session aborted. Your encrypted files remain safely in store/."
+    echo ""
+    exit 0
+fi
+
 first_run_check
 main_menu
