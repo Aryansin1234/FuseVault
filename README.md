@@ -27,38 +27,45 @@
 
 ## 🔐 What is FuseVault?
 
-**FuseVault** is a mountable virtual filesystem that **transparently encrypts every file you write and decrypts every file you read** — completely invisible to any application that uses it.
+Imagine a black hole for your sensitive data, where files go in and instantly turn into cryptographically secure noise—but to you, everything looks perfectly normal.
 
-Copy a file into `mount/` — it's encrypted on disk. Read it back — it's decrypted automatically. No special software, no manual steps. It just works.
+**FuseVault** is a mountable virtual filesystem that **transparently encrypts every file you write and decrypts every file you read** — completely invisible to the applications you use daily.
 
+### 🧠 Explain Like I'm 5 (ELI5)
+Think of `mount/` as a magic portal and `store/` as a reinforced concrete vault. 
+
+When you drop a file into the magic portal (`mount/`), our FUSE engine intercepts it, instantly wraps it in AES-256-CBC encryption, and drops the scrambled binary mess into the vault (`store/`). When you open the file, the portal decrypts it on-the-fly. 
+
+No special commands. No manual decryption steps. It just works.
+
+```text
+ 🧑‍💻 You: cat mount/secrets.txt
+                  ↓
+         [ Magic Portal (FUSE) Intercepts ]
+                  ↓
+         [ Decrypts on-the-fly via AES-256-CBC ]
+                  ↓
+ 📄 App receives: "my top secret content"
+
+ 💽 What's actually in store/: ÿó¤±Ðú╗╢╕ëÞõ (unreadable binary)
 ```
- You: cat mount/secrets.txt
-                  ↓
-         FUSE intercepts the read
-                  ↓
-         Decrypts on-the-fly via AES-256-CBC
-                  ↓
- App receives: "my top secret content"
 
- What's on disk in store/: ÿó¤±Ðú╗╢╕ëÞõ (unreadable binary)
-```
-
-> Think: **macOS FileVault** or **VeraCrypt** — but implemented from scratch in C, fully in userspace.
+> **Vibe Check:** It's like **macOS FileVault** or **VeraCrypt** — but built entirely from scratch in C, running in userspace, with a gorgeous terminal UI.
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features (The Magic Under the Hood)
 
 | Feature | Description |
 |---|---|
-| 🔒 **Transparent Encryption** | Any app reads/writes normally — encryption is invisible at the OS level |
-| 🛡️ **AES-256-CBC per file** | Each file gets a fresh random IV, preventing frequency analysis |
-| 🗝️ **Envelope Encryption (FEK)** | Per-file keys wrapped by master key — same model as AWS KMS & Google Cloud KMS |
-| 🧬 **Argon2id Key Derivation** | Memory-hard passphrase KDF — GPU brute-force becomes economically infeasible |
-| 📋 **Hash-Chain Audit Log** | Every operation SHA-256 chained — log tampering is instantly detectable |
-| 🔏 **Secure Memory Erasure** | `OPENSSL_cleanse()` + `mlock()` — keys never hit swap, zeroed on unmount |
-| 🎬 **Interactive TUI** | Cinematic terminal UI with guided demo, file browser, diagnostics, and more |
-| 🔄 **Key Rotation** | Re-encrypt all files under a new master key with one command |
+| 🔒 **Transparent Shielding** | Any app reads/writes normally — encryption is completely invisible at the OS level |
+| 🛡️ **AES-256-CBC per file** | Each file gets a fresh random IV, making frequency analysis completely useless |
+| 🗝️ **Envelope Encryption (FEK)** | Per-file keys wrapped by a master key — exactly the same architecture used in **AWS KMS** & **Google Cloud KMS** |
+| 🧬 **Argon2id Key Derivation** | Memory-hard passphrase KDF — it forces brute-forcing GPUs to an absolute crawl (because of RAM limits) |
+| 📋 **Hash-Chain Audit Log** | Every operation SHA-256 chained — log tampering is instantly mathematically detectable |
+| 🔏 **Secure Memory Erasure** | `OPENSSL_cleanse()` + `mlock()` — keys never hit swap disks and are aggressively zeroed on unmount |
+| 🎬 **Immersive TUI** | Cinematic Hacker/Matrix terminal UI with guided demos, file browsing, health diagnostics, and confirmation gates |
+| 🔄 **One-Command Key Rotation** | Instantly re-encrypt all files under a brand new master key with a single lifecycle command |
 
 ---
 
@@ -295,13 +302,15 @@ ls mount/
 
 ---
 
-## 🖥️ Interactive TUI
+## 🖥️ Interactive TUI (The Matrix Hacker Experience)
 
-FuseVault ships with a full cinematic terminal UI powered by [gum](https://github.com/charmbracelet/gum):
+FuseVault isn't just a backend tool. It ships with a fully **cinematic terminal UI** featuring a custom green-to-cyan hacker aesthetic, particle rain animations, typewriter text effects, and interactive flow-gates. It's built beautifully using [gum](https://github.com/charmbracelet/gum).
 
 ```bash
 ./scripts/fusevault_ui.sh
 ```
+
+*Drop into a fully guided, visually stunning dashboard that makes securing your files feel like operating a sci-fi mainframe.*
 
 **Screens available:**
 
